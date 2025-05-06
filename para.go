@@ -1,14 +1,25 @@
 package main
 
 import (
-	// "github.com/Yuuki1578/para/lib/cmd"
+	"log"
 	"os"
 	"os/exec"
+
+	"github.com/Yuuki1578/para/lib/cmd"
 )
 
 func main() {
-	for range 10 {
-		out, _ := exec.Command("ls", "-A").Output()
-		os.Stdout.Write(out)
+	err := cmd.New().
+		Append("find", ".").
+		Append("ls", "-A").
+		Append("echo", "Hi!").
+		Append("curl", "https://www.google.com").
+		Run(func(command *exec.Cmd) {
+			output, _ := command.Output()
+			os.Stdout.Write(output)
+		})
+
+	if err != nil {
+		log.Fatalln(err.Error())
 	}
 }

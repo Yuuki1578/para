@@ -2,57 +2,105 @@ package cmd
 
 import (
 	"errors"
-	"os"
 	"os/exec"
 	"sync"
 )
 
 var (
-	ErrCommandFailed error = errors.New("Command failed to be executed")
-	ErrNoSuchCommand error = errors.New("No such command in entry list")
+	ErrNilReciever error = errors.New("Reciever is nil")
 )
 
 type ShellCmd struct {
 	innerCmd []*exec.Cmd
 }
 
-func New() ShellCmd {
-	return ShellCmd{
+func New() *ShellCmd {
+	return &ShellCmd{
 		innerCmd: make([]*exec.Cmd, 8),
 	}
 }
 
-func (sh *ShellCmd) Append(name string, args ...string) {
-	if sh != nil {
-		sh.innerCmd = append(sh.innerCmd, exec.Command(name, args...))
+func (sh *ShellCmd) Append(name string, args ...string) *ShellCmd {
+	if sh == nil {
+		return New().Append(name, args...)
 	}
+
+	sh.innerCmd = append(sh.innerCmd, exec.Command(name, args...))
+	return sh
 }
 
-func (sh *ShellCmd) Run() error {
+func (sh *ShellCmd) AppendRawCmd(cmd *exec.Cmd) *ShellCmd {
 	if sh == nil {
-		return ErrCommandFailed
+		return New().AppendRawCmd(cmd)
+	}
+
+	sh.innerCmd = append(sh.innerCmd, cmd)
+	return sh
+}
+
+func (sh *ShellCmd) TotalTask() (int, error) {
+	if sh == nil {
+		return 0, ErrNilReciever
+	}
+
+	total := 0
+
+	for _, task := range sh.innerCmd {
+		if task != nil {
+			total += 1
+		}
+	}
+
+	return total, nil
+}
+
+func (sh *ShellCmd) FixErrorCommand() (*ShellCmd, error) {
+	if sh == nil {
+		return nil, ErrNilReciever
+	}
+
+	clearTask := New()
+
+	for _, cmd := range sh.innerCmd {
+		if cmd != nil {
+			clearTask.AppendRawCmd(cmd)
+		}
+	}
+
+	return sh, nil
+}
+
+func (sh *ShellCmd) Run(fn func(command *exec.Cmd)) error {
+	if sh == nil {
+		return ErrNilReciever
+	}
+
+	if ok, err := sh.FixErrorCommand(); err != nil {
+		return err
+	} else {
+		sh = ok
 	}
 
 	waiter := sync.WaitGroup{}
-	waitable := len(sh.innerCmd)
 
-	if waitable == 0 {
-		return ErrNoSuchCommand
+	switch taskLen, err := sh.TotalTask(); err {
+	case nil:
+		waiter.Add(taskLen)
+
+	default:
+		return err
 	}
 
-	waiter.Add(waitable)
-
 	for _, command := range sh.innerCmd {
+		if command == nil {
+			continue
+		}
+
 		go func() {
-			stdout, err := command.Output()
 			defer waiter.Done()
 
-			if err != nil {
-				return
-			}
-
-			if _, err = os.Stdout.Write(stdout); err == nil {
-				os.Stdout.Sync()
+			if fn != nil {
+				fn(command)
 			}
 		}()
 	}
