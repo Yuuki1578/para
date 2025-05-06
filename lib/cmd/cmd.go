@@ -6,9 +6,7 @@ import (
 	"sync"
 )
 
-var (
-	ErrNilReciever error = errors.New("Reciever is nil")
-)
+var ErrNilReciever error = errors.New("Reciever is nil")
 
 type ShellCmd struct {
 	innerCmd []*exec.Cmd
