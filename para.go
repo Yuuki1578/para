@@ -3,44 +3,46 @@ package main
 import (
 	"log"
 	"os/exec"
+	"strings"
 
 	"github.com/Yuuki1578/para/lib/cmd"
 )
 
 func main() {
-	json, err := cmd.OpenConfig()
-
-	if err != nil {
-		log.Fatalln(err.Error())
-	}
-
-	config, err := cmd.UnpackJson(json)
-
-	if err != nil {
-		log.Fatalln(err.Error())
-	}
-
-	commands := cmd.New()
-	config.Map(func(command []string) {
-		if command == nil {
-			return
+	reader := strings.NewReader(`
+		{
+			"session": [
+				{
+					"command": ["curl", "https://www.google.com"],
+					"count": 10
+				}
+			]
 		}
+	`)
 
-		switch len(command) {
+	conf, err := cmd.Parse(reader)
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+
+	group := cmd.Init()
+	conf.ForEach(func(command *cmd.JsonSection) {
+		count, args := command.Count, command.Command
+
+		switch len(args) {
 		case 0:
-			return
+			log.Println("Empty command")
 
 		case 1:
-			commands.Append(command[0])
+			group.Append(count, args[0])
 
 		default:
-			commands.Append(command[0], command[1:]...)
+			group.Append(count, args[0], args...)
 		}
 	})
 
-	commands.Run(func(command *exec.Cmd) {
-		if out, err := command.CombinedOutput(); err == nil {
-			log.Println(string(out))
-		}
+	group.Run(func(command *exec.Cmd) {
+		out, _ := command.CombinedOutput()
+		log.Println(string(out))
 	})
 }

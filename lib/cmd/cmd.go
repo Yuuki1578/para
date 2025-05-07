@@ -6,101 +6,133 @@ import (
 	"sync"
 )
 
-var ErrNilReciever error = errors.New("Reciever is nil")
+var (
+	ErrNilReciever error = errors.New("Reciever is nil")
+	ErrNoSuchTask  error = errors.New("No such command")
+)
 
-type ShellCmd struct {
-	innerCmd []*exec.Cmd
+type Command struct {
+	backup  []string
+	command *exec.Cmd
+	count   uint64
 }
 
-func New() *ShellCmd {
-	return &ShellCmd{
-		innerCmd: make([]*exec.Cmd, 8),
+func newCommand(count uint64, name string, args ...string) Command {
+	return Command{
+		backup:  append([]string{name}, args...),
+		command: exec.Command(name, args...),
+		count:   count,
 	}
 }
 
-func (sh *ShellCmd) Append(name string, args ...string) *ShellCmd {
-	if sh == nil {
-		return New().Append(name, args...)
-	}
-
-	sh.innerCmd = append(sh.innerCmd, exec.Command(name, args...))
-	return sh
+type CommandGroup struct {
+	commandList []Command
 }
 
-func (sh *ShellCmd) AppendRawCmd(cmd *exec.Cmd) *ShellCmd {
-	if sh == nil {
-		return New().AppendRawCmd(cmd)
+func Init() *CommandGroup {
+	return &CommandGroup{
+		commandList: make([]Command, 0, 8),
 	}
-
-	sh.innerCmd = append(sh.innerCmd, cmd)
-	return sh
 }
 
-func (sh *ShellCmd) TotalTask() (int, error) {
-	if sh == nil {
-		return 0, ErrNilReciever
+func (group *CommandGroup) Append(count uint64, name string, args ...string) *CommandGroup {
+	if group == nil {
+		return Init().Append(count, name, args...)
 	}
 
+	command := newCommand(count, name, args...)
+	group.commandList = append(group.commandList, command)
+	return group
+}
+
+func (group *CommandGroup) Fix() {
+	if group == nil {
+		return
+	}
+
+	taskTmp := make([]Command, 0, cap(group.commandList))
+	for _, instance := range group.commandList {
+		if instance.command != nil {
+			taskTmp = append(taskTmp, instance)
+		}
+	}
+
+	group.commandList = taskTmp
+}
+
+func (group CommandGroup) Total() int {
 	total := 0
 
-	for _, task := range sh.innerCmd {
-		if task != nil {
-			total += 1
+	for _, instance := range group.commandList {
+		if instance.command != nil {
+			total++
 		}
 	}
 
-	return total, nil
+	return total
 }
 
-func (sh *ShellCmd) FixErrorCommand() (*ShellCmd, error) {
-	if sh == nil {
-		return nil, ErrNilReciever
-	}
-
-	clearTask := New()
-
-	for _, cmd := range sh.innerCmd {
-		if cmd != nil {
-			clearTask.AppendRawCmd(cmd)
-		}
-	}
-
-	return sh, nil
-}
-
-func (sh *ShellCmd) Run(fn func(command *exec.Cmd)) error {
-	if sh == nil {
+func (group *CommandGroup) Run(fn func(command *exec.Cmd)) error {
+	if group == nil || fn == nil {
 		return ErrNilReciever
 	}
 
-	if ok, err := sh.FixErrorCommand(); err != nil {
-		return err
-	} else {
-		sh = ok
-	}
-
+	group.Fix()
 	waiter := sync.WaitGroup{}
-
-	switch taskLen, err := sh.TotalTask(); err {
-	case nil:
-		waiter.Add(taskLen)
-
-	default:
-		return err
+	taskLen := group.Total()
+	if taskLen <= 0 {
+		return ErrNoSuchTask
 	}
 
-	for _, command := range sh.innerCmd {
-		if command == nil {
+	waiter.Add(taskLen)
+	for _, instance := range group.commandList {
+		count := instance.count
+		singleCount := func() {
+			defer waiter.Done()
+			fn(instance.command)
+		}
+
+		multiCount := func() {
+			rawName := instance.backup
+			rawLen := len(rawName)
+			localWait := sync.WaitGroup{}
+
+			defer waiter.Done()
+			if rawLen == 0 {
+				return
+			}
+
+			localWait.Add(int(count))
+			for range count {
+				switch rawLen {
+				case 1:
+					go func() {
+						defer localWait.Done()
+						fn(exec.Command(rawName[0]))
+					}()
+
+				default:
+					go func() {
+						defer localWait.Done()
+						fn(exec.Command(rawName[0], rawName...))
+					}()
+				}
+			}
+
+			localWait.Wait()
+		}
+
+		if instance.command == nil {
 			continue
 		}
 
-		go func() {
-			defer waiter.Done()
+		switch count {
+		case 0, 1:
+			go singleCount()
 
-			if fn != nil {
-				fn(command)
-			}
-		}()
+		default:
+			go multiCount()
+		}
 	}
 
 	waiter.Wait()

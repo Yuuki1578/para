@@ -1,0 +1,8 @@
+{
+  "session": [
+    {
+      "command": ["go help"],
+      "count": 100
+    }
+  ]
+}
