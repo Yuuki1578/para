@@ -6,30 +6,30 @@ import (
 )
 
 var (
-	Stdout *log.Logger = log.New(os.Stdout, "[PARA INFO]: ", log.Ltime)
-	Stderr *log.Logger = log.New(os.Stderr, "[PARA WARN]: ", log.Ltime)
+	stdout *log.Logger = log.New(os.Stdout, "[PARA INFO]: ", log.Ltime)
+	stderr *log.Logger = log.New(os.Stderr, "[PARA WARN]: ", log.Ltime)
 )
 
 func Print(v ...any) {
-	Stdout.Print(v...)
+	stdout.Print(v...)
 }
 
 func Printf(format string, v ...any) {
-	Stdout.Printf(format, v...)
+	stdout.Printf(format, v...)
 }
 
 func Println(v ...any) {
-	Stdout.Println(v...)
+	stdout.Println(v...)
 }
 
 func Eprint(v ...any) {
-	Stderr.Print(v...)
+	stderr.Print(v...)
 }
 
 func Eprintf(format string, v ...any) {
-	Stderr.Printf(format, v...)
+	stderr.Printf(format, v...)
 }
 
 func Eprintln(v ...any) {
-	Stderr.Println(v...)
+	stderr.Println(v...)
 }

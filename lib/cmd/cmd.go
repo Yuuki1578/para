@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"errors"
+	"github.com/Yuuki1578/para/lib/env"
 	"os/exec"
 	"sync"
 )
@@ -63,6 +64,10 @@ func (group CommandGroup) Total() int {
 	return total
 }
 
+func (group CommandGroup) Capacity() int {
+	return cap(group.commandList)
+}
+
 func singleCommand(
 	waiter *sync.WaitGroup,
 	instanceOf *Command,
@@ -81,18 +86,21 @@ func multiCommand(
 	name := instanceOf.backing
 	length := len(name)
 	localWait := sync.WaitGroup{}
+	defer waiter.Done()
+
+	if usingEnv := env.GetEnv(); usingEnv != 0 {
+		count = usingEnv
+	}
 
 	fnOnce := func() {
-		defer localWait.Done()
 		fn(exec.Command(name[0]))
+		localWait.Done()
 	}
 
 	fnMul := func() {
-		defer localWait.Done()
 		fn(exec.Command(name[0], name...))
+		localWait.Done()
 	}
-
-	defer waiter.Done()
 
 	if length == 0 {
 		return
